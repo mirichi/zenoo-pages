@@ -264,9 +264,15 @@
       position: absolute;
       top: -9999px;
       left: -9999px;
+      width: 1px;
+      height: 20px;
+      padding: 0;
+      border: 0;
       opacity: 0;
       pointer-events: none;
       font-size: 16px; /* iOS Safariでズーム発動を防止する16px以上 */
+      -webkit-user-select: text;
+      user-select: text;
     }
   </style>
 </head>
@@ -523,9 +529,23 @@
     window.zenooOnFocusTextInput = function(x, y) {
       if (!hiddenInput) return;
       if (x >= 0 && y >= 0) {
-        hiddenInput.focus();
+        var rect = canvasElement.getBoundingClientRect();
+        var contRect = containerElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0 && canvasElement.width > 0 && canvasElement.height > 0) {
+          var sx = rect.width / canvasElement.width;
+          var sy = rect.height / canvasElement.height;
+          var ix = (rect.left - contRect.left) + x * sx;
+          var iy = (rect.top - contRect.top) + y * sy;
+          hiddenInput.style.left = Math.max(0, Math.min(contRect.width - 2, ix)) + 'px';
+          hiddenInput.style.top = Math.max(0, Math.min(contRect.height - 2, iy)) + 'px';
+        }
+        if (document.activeElement !== hiddenInput) {
+          hiddenInput.focus({ preventScroll: true });
+        }
       } else {
-        hiddenInput.blur();
+        if (document.activeElement === hiddenInput) {
+          hiddenInput.blur();
+        }
       }
     };
 
@@ -542,15 +562,21 @@
       }
     }
 
-    window.addEventListener('keydown', function(e) {
-      if (document.activeElement === hiddenInput && (isComposing || e.isComposing || e.keyCode === 229)) {
-        if (e.key === 'Enter') {
-          e.stopImmediatePropagation();
-        }
-      }
-    }, true);
-
     if (hiddenInput) {
+      // SDL3 Emscripten (window上のkeypressリスナー) が preventDefault() して
+      // hiddenInput への文字入力 (inputイベント) を阻害するのを防止する
+      hiddenInput.addEventListener('keypress', function(e) {
+        e.stopPropagation();
+      });
+
+      // IME変換中のキー操作 (Enter/Backspace/矢印等) が SDL3 へバブリングして
+      // preventDefault() や TextBox 側の誤動作を起こさないようにする
+      hiddenInput.addEventListener('keydown', function(e) {
+        if (isComposing || e.isComposing || e.keyCode === 229) {
+          e.stopPropagation();
+        }
+      });
+
       hiddenInput.addEventListener('compositionstart', function() {
         isComposing = true;
       });
